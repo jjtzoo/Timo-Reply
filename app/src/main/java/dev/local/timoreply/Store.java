@@ -2,6 +2,8 @@ package dev.local.timoreply;
 
 import android.content.Context;
 import android.content.SharedPreferences;
+import android.content.ComponentName;
+import android.provider.Settings;
 import android.util.Log;
 import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
@@ -10,8 +12,16 @@ import java.util.Iterator;
 
 final class Store {
     static final String TARGET = "com.hwsj.club";
-    static final String DEFAULT_REPLY = "Hey you \uD83D\uDE09 how's your day going?";
+    static final String DEFAULT_REPLY = "Hey you \uD83D\uDE0A nice to hear from you.";
     static SharedPreferences prefs(Context c) { return c.getSharedPreferences("timo_reply", Context.MODE_PRIVATE); }
+    static boolean hasAccess(Context c) {
+        String listeners = Settings.Secure.getString(c.getContentResolver(), "enabled_notification_listeners");
+        if (listeners == null) return false;
+        ComponentName component = new ComponentName(c, TimoListener.class);
+        for (String listener : listeners.split(":"))
+            if (component.flattenToString().equals(listener) || component.flattenToShortString().equals(listener)) return true;
+        return false;
+    }
     static void status(Context c, String value) {
         prefs(c).edit().putString("status", value).putLong("status_at", System.currentTimeMillis()).apply();
         Log.i("TimoReply", value);

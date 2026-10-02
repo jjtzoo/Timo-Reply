@@ -8,7 +8,7 @@ public final class ReplyPolicyTest {
     private String check(boolean enabled, boolean reply, boolean summary, boolean ongoing,
             boolean group, boolean outgoing, boolean message, boolean seen,
             long armed, long posted, long messageAt, long threadAt, long globalAt) {
-        return ReplyPolicy.skipReason(enabled, reply, summary, ongoing, group, outgoing, message,
+        return ReplyPolicy.skipReason(enabled, true, reply, summary, ongoing, group, outgoing, message,
                 seen, armed, posted, messageAt, NOW, threadAt, globalAt);
     }
     @Test public void freshMessageCanReply() {
@@ -41,5 +41,12 @@ public final class ReplyPolicyTest {
     @Test public void warmupAndFutureTimestampsAreRejected() {
         assertNotNull(check(true,true,false,false,false,false,true,false,NOW-4000,NOW-1000,NOW-1000,0,0));
         assertNotNull(check(true,true,false,false,false,false,true,false,NOW-10_000,NOW+10_000,NOW+10_000,0,0));
+    }
+    @Test public void queuedCallbackCannotSendAfterDisconnect() {
+        assertNotNull(ReplyPolicy.skipReason(true, false, true, false, false, false, false,
+                true, false, NOW-10_000, NOW-1000, NOW-1000, NOW, 0, 0));
+    }
+    @Test public void missingMessageTimestampCannotProveFreshness() {
+        assertNotNull(check(true,true,false,false,false,false,true,false,NOW-10_000,NOW-1000,0,0,0));
     }
 }

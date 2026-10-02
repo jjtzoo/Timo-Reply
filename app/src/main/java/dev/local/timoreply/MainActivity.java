@@ -1,7 +1,6 @@
 package dev.local.timoreply;
 
 import android.app.Activity;
-import android.content.ComponentName;
 import android.content.Intent;
 import android.content.SharedPreferences;
 import android.graphics.Color;
@@ -9,7 +8,6 @@ import android.os.Bundle;
 import android.os.Handler;
 import android.provider.Settings;
 import android.text.InputType;
-import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.LinearLayout;
@@ -66,7 +64,7 @@ public final class MainActivity extends Activity {
         enabled.setOnCheckedChangeListener((view, checked) -> {
             if (refreshing) return;
             SharedPreferences p = Store.prefs(this);
-            if (checked && (!hasAccess() || !p.getBoolean("connected", false)
+            if (checked && (!Store.hasAccess(this) || !p.getBoolean("connected", false)
                     || !p.getBoolean("reply_supported", false))) {
                 Toast.makeText(this, "First detect a Timo notification with a reply action.", Toast.LENGTH_LONG).show();
                 update(); return;
@@ -78,6 +76,7 @@ public final class MainActivity extends Activity {
             update();
         });
         text(content, "At most one reply per conversation every 10 minutes. Group conversations are skipped when identified. No messages are sent during preview.", 14);
+        text(content, "Once enabled, replies resume after Android reconnects. Existing unread messages stay skipped.", 14);
         text(content, "Latest diagnostic", 18);
         status = text(content, "Waiting for a Timo notification.", 15);
         status.setTextIsSelectable(true);
@@ -93,24 +92,17 @@ public final class MainActivity extends Activity {
         Store.prefs(this).edit().putString("reply", value).apply(); return true;
     }
 
-    private boolean hasAccess() {
-        String listeners = Settings.Secure.getString(getContentResolver(), "enabled_notification_listeners");
-        String component = new ComponentName(this, TimoListener.class).flattenToString();
-        if (listeners == null) return false;
-        for (String item : listeners.split(":"))
-            if (component.equals(item) || new ComponentName(this, TimoListener.class).flattenToShortString().equals(item)) return true;
-        return false;
-    }
-
     private void update() {
         SharedPreferences p = Store.prefs(this);
-        boolean access = hasAccess();
+        boolean access = Store.hasAccess(this);
         if (!access) p.edit().putBoolean("enabled", false).putBoolean("connected", false).apply();
         refreshing = true;
         enabled.setChecked(access && p.getBoolean("enabled", false));
         refreshing = false;
         long at = p.getLong("status_at", 0);
-        status.setText("Notification access: " + (access ? "ON" : "OFF") + "\n"
+        String mode = !p.getBoolean("enabled", false) ? "Preview" : p.getBoolean("connected", false) ? "Auto-send ON" : "Auto-send PAUSED";
+        status.setText("Mode: " + mode + "\nNotification access: " + (access ? "ON" : "OFF") + "\n"
+                + "Listener: " + (p.getBoolean("connected", false) ? "Connected" : "Disconnected") + "\n"
                 + (at > 0 ? DateFormat.getTimeInstance().format(new Date(at)) + "\n" : "")
                 + p.getString("status", "Waiting for a Timo notification."));
     }

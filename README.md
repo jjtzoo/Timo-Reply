@@ -3,7 +3,7 @@
 Android app for one configurable, casual and lightly flirty reply to Timo Club messages.
 Starts in preview; auto-send is OFF. Default message:
 
-> Hey you 😉 how's your day going?
+> Hey you 😊 nice to hear from you.
 
 ## Build
 
@@ -16,7 +16,7 @@ Use JDK 17 or 21. Gradle wrapper 9.3.1 and Android Gradle Plugin 9.1.1 are pinne
 
 APK output: `app/build/outputs/apk/debug/app-debug.apk`.
 The delivery includes `timo-reply-debug.apk`, built with official Android SDK Platform 36 and Build Tools 36.0.0. It is a debug prototype for testing on your phone.
-`tools/Build-Apk.ps1` reproduces this build directly with the SDK tools; the Gradle build is also configured, but Gradle/lint have not been run.
+`tools/Build-Apk.ps1` reproduces this build directly with the SDK tools, taking the app version from `app/build.gradle`.
 
 ```powershell
 .\tools\Build-Apk.ps1 -PlatformDirectory 'C:\Android\Sdk\platforms\android-36' -BuildToolsDirectory 'C:\Android\Sdk\build-tools\36.0.0' -JavaBinDirectory 'C:\path\to\jdk\bin'
@@ -49,8 +49,12 @@ adb install -r .\timo-reply-debug.apk
 - Uses notification reply actions, including wearable actions. No root or accessibility tapping.
 - Skips existing notifications at listener connection, old messages, duplicates, summary/ongoing notifications, identifiable groups, and identifiable outgoing messages.
 - At most one reply per conversation per 10 minutes, with a 30-second global gap.
-- Starts in preview again after every notification listener reconnect.
+- Starts in preview on first install. After explicit opt-in, a normal listener reconnect resumes auto-send after a fresh baseline and warmup; existing unread notifications are never sent replies during recovery.
+- A disconnected listener pauses dispatch. Removing notification access disables auto-send when the app observes that permission loss.
+- Support detection stays available after observing a usable reply action, even if a later summary notification has no action. Ambiguous unlabeled text-input actions are skipped.
+- Messages without a usable timestamp are skipped because their age cannot be verified.
 - Cooldown and deduplication reservations persist before sending. Failed dispatches consume the reservation and are not retried automatically.
+- Gradle uses the existing ignored `work/manual-build/debug.keystore` when present, matching the direct SDK build. Retain that local key to update an installed prototype without changing its signing identity.
 - Message text is processed locally, with no internet permission. Only hashes/timestamps and diagnostic status are retained; message bodies are not logged. No AI replies.
 - When notification metadata does not identify a group or your own message, those classifications cannot be guaranteed. Do the controlled phone test before relying on auto-send.
 - If Timo does not expose a usable notification reply action, this approach cannot send. Device inspection will determine the next approach. No official Timo bot API has been verified.
@@ -58,10 +62,10 @@ adb install -r .\timo-reply-debug.apk
 
 ## Verification
 
-Eight unit tests cover preview, fresh messages, reposted old messages, duplicates, missing reply actions, group/outgoing messages, cooldown boundaries, summaries, warmup and future timestamps.
+Ten unit tests cover preview, fresh messages, reposted old messages, duplicates, missing reply actions, group/outgoing messages, cooldown boundaries, summaries, warmup, future timestamps, callbacks after disconnect, and unknown message age.
 See `tools/Test-Policy.ps1` to run them with a Java JDK without an Android SDK.
-All eight tests passed. Android Java and resources compiled, D8 generated the DEX, and the APK passed signature verification (v2/v3).
-Gradle/lint and actual Timo reply behavior remain unverified. A phone test is still required.
+The Gradle debug build, all ten unit tests, and Android lint passed (lint still reports non-blocking warnings). The APK passed signature verification (v2/v3).
+Actual Timo reply delivery and all-day/reboot recovery remain unverified. A controlled phone test is still required; reconnect recovery is implemented but not yet demonstrated on Timo.
 
 ## Platform references
 
