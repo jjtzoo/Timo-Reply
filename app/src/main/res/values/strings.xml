@@ -1,3 +1,3 @@
 <resources>
-    <string name="unread_access_description">When you tap Reply unread chats, Timo Reply reads Timo’s visible inbox, opens unread direct chats, enters your saved reply, and taps Send. Keep Timo visible and the phone unlocked. Groups, assistant accounts and existing drafts are skipped. Nothing starts just by enabling this service.</string>
+    <string name="unread_access_description">When you tap Reply unread chats, Timo Reply reads Timo’s visible Unread inbox, opens direct chats showing “Reply to messages to earn diamonds”, enters your saved reply, and taps Send. Keep Timo visible and the phone unlocked. Groups and assistant accounts are skipped; existing drafts stop the pass. Nothing starts just by enabling this service.</string>
 </resources>

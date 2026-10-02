@@ -25,6 +25,7 @@ public final class UnreadService extends AccessibilityService {
     private final Set<String> visited = new HashSet<>();
     private Stage stage;
     private long stageAt;
+    private long diagnosticAt;
     private int sent;
     private int skipped;
     private int emptyChecks;
@@ -86,7 +87,7 @@ public final class UnreadService extends AccessibilityService {
         status(message);
     }
     private void complete() {
-        finish("Unread pass finished. Switching to notification auto-replies.");
+        finish("Diamond-reward unread pass finished. Switching to notification auto-replies.");
         if (!Store.hasAccess(this)) {
             status("Unread pass finished. Enable notification access to handle new messages."); return;
         }
@@ -101,6 +102,12 @@ public final class UnreadService extends AccessibilityService {
                 finish("Stopped: expected Timo screen did not appear. Check the last chat; no retry."); return;
             }
             AccessibilityNodeInfo root = getRootInActiveWindow();
+            if (SystemClock.elapsedRealtime() - diagnosticAt > 5000) {
+                diagnosticAt = SystemClock.elapsedRealtime();
+                Log.i("TimoUnread", "Stage=" + stage + ", Timo visible=" + (root != null && Store.TARGET.equals(String.valueOf(root.getPackageName())))
+                        + ", inbox control=" + (inbox(root) != null)
+                        + ", Unread control=" + (root != null && textNode(root, "titleView", "Unread") != null));
+            }
             if (root != null && root.getPackageName() != null && Store.TARGET.contentEquals(root.getPackageName())) advance(root);
         } catch (RuntimeException e) {
             finish("Stopped: " + e.getClass().getSimpleName() + ". Check the last chat; no retry.");
@@ -110,11 +117,27 @@ public final class UnreadService extends AccessibilityService {
     private void advance(AccessibilityNodeInfo root) {
         switch (stage) {
             case INBOX: {
-                if (find(root, "conversationListContainer") != null && textNode(root, "titleView", "Unread") != null) {
+                if (inbox(root) != null && textNode(root, "titleView", "Unread") != null) {
                     setStage(Stage.SELECT_UNREAD); return;
                 }
                 AccessibilityNodeInfo back = find(root, "ivBack");
-                if (back != null) { click(back); return; }
+                if (back != null) {
+                    // An explicit new start can finish the app's own pre-send draft in the open chat.
+                    // Never retry anything that may already have reached Send.
+                    String name = text(find(root, "tvTitle"));
+                    String key = Store.hash(name);
+                    long reservedAt = Store.map(this, "unread_reserved").optLong(key);
+                    boolean knownPending = key.equals(Store.prefs(this).getString("unread_pending_key", ""));
+                    boolean legacyPreSend = reservedAt > 0 && System.currentTimeMillis() - reservedAt < 15 * 60 * 1000L
+                            && Store.map(this, "threads").optLong(key) < reservedAt;
+                    boolean dispatched = Store.prefs(this).getBoolean("unread_pending_dispatched", false);
+                    if (directChat(root) && !name.isEmpty() && (knownPending || legacyPreSend) && !dispatched
+                            && UnreadPolicy.sameText(reply, text(find(root, "editContent")))) {
+                        expectedName = name; visited.add(key); setStage(Stage.SEND);
+                        status("Continuing the bot's previously entered reply."); return;
+                    }
+                    click(back); return;
+                }
                 AccessibilityNodeInfo messages = textNode(root, "mTvLabel", "Messages");
                 if (messages != null) click(messages);
                 return;
@@ -145,6 +168,8 @@ public final class UnreadService extends AccessibilityService {
                 if (!edit.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) {
                     finish("Stopped: Timo did not allow entering the reply."); return;
                 }
+                Store.prefs(this).edit().putString("unread_pending_key", Store.hash(expectedName))
+                        .putBoolean("unread_pending_dispatched", false).apply();
                 setStage(Stage.SEND); return;
             }
             case SEND: {
@@ -158,7 +183,9 @@ public final class UnreadService extends AccessibilityService {
                 // Enter VERIFY before dispatch; no repeat tap even if UI delivery is slow.
                 long now = System.currentTimeMillis();
                 Store.remember(this, "threads", Store.hash(expectedName), now);
-                if (!Store.prefs(this).edit().putLong("global_reply_at", now).commit())
+                if (!Store.prefs(this).edit().putLong("global_reply_at", now)
+                        .putString("unread_pending_key", Store.hash(expectedName))
+                        .putBoolean("unread_pending_dispatched", true).commit())
                     throw new IllegalStateException("Could not reserve notification cooldown");
                 setStage(Stage.VERIFY);
                 if (!click(send)) finish("Stopped: Timo did not accept Send. No retry.");
@@ -170,13 +197,14 @@ public final class UnreadService extends AccessibilityService {
                 AccessibilityNodeInfo edit = find(root, "editContent");
                 if (outgoingCount(root) == 1 && edit != null && emptyDraft(edit)) {
                     sent++;
+                    Store.prefs(this).edit().remove("unread_pending_key").remove("unread_pending_dispatched").apply();
                     status("Outgoing reply appeared. Continuing through Unread.");
                     setStage(Stage.RETURN);
                 }
                 return;
             }
             case RETURN: {
-                if (find(root, "conversationListContainer") != null) {
+                if (inbox(root) != null) {
                     // Selecting Unread can restore the first page; each pass must scan to the bottom again.
                     pages.clear(); emptyChecks = 0; setStage(Stage.SELECT_UNREAD); return;
                 }
@@ -189,7 +217,7 @@ public final class UnreadService extends AccessibilityService {
     }
 
     private void scan(AccessibilityNodeInfo root) {
-        AccessibilityNodeInfo list = find(root, "conversationListContainer");
+        AccessibilityNodeInfo list = inbox(root);
         if (list == null) { finish("Stopped: Unread inbox is no longer visible."); return; }
         Rect listBounds = new Rect(); list.getBoundsInScreen(listBounds);
         StringBuilder page = new StringBuilder();
@@ -204,7 +232,8 @@ public final class UnreadService extends AccessibilityService {
             boolean special = find(row, "myFamilyView") != null || containsText(row, "Tribe");
             long reservedAt = Store.map(this, "unread_reserved").optLong(key);
             boolean reserved = visited.contains(key) || (reservedAt > 0 && System.currentTimeMillis() - reservedAt < 24 * 60 * 60 * 1000L);
-            if (!UnreadPolicy.eligible(name, text(badge), special, reserved)) continue;
+            // VIP and other tags have separate nodes; only title is the recipient name.
+            if (!UnreadPolicy.eligible(name, text(badge), text(find(row, "desc")), special, reserved)) continue;
             Rect bounds = new Rect(); row.getBoundsInScreen(bounds);
             if (!listBounds.contains(bounds) || bounds.height() < 120) continue;
             // Opening consumes the unread flag. Persist before opening; interrupted chats never retry silently.
@@ -246,7 +275,7 @@ public final class UnreadService extends AccessibilityService {
     private int outgoingCount(AccessibilityNodeInfo root) {
         int count = 0;
         for (AccessibilityNodeInfo content : root.findAccessibilityNodeInfosByViewId(PREFIX + "content")) {
-            if (!reply.equals(text(content))) continue;
+            if (!UnreadPolicy.sameText(reply, text(content))) continue;
             AccessibilityNodeInfo body = content.getParent();
             for (int i = 0; body != null && i < 5 && !(PREFIX + "body").equals(body.getViewIdResourceName()); i++) body = body.getParent();
             if (body == null || !(PREFIX + "body").equals(body.getViewIdResourceName())) continue;
@@ -265,18 +294,34 @@ public final class UnreadService extends AccessibilityService {
         return false;
     }
     private static AccessibilityNodeInfo inboxRecycler(AccessibilityNodeInfo node, Rect listBounds) {
-        CharSequence cls = node.getClassName();
-        Rect bounds = new Rect(); node.getBoundsInScreen(bounds);
-        if (node.isVisibleToUser() && cls != null && cls.toString().endsWith("RecyclerView")
-                && bounds.width() >= listBounds.width() * 0.8 && bounds.height() >= listBounds.height() * 0.5)
-            return node;
+        // ViewPager2 exposes a horizontal RecyclerView around the actual vertical inbox.
+        // Prefer the deepest matching list so Scroll cannot change the inbox category.
         for (int i = 0; i < node.getChildCount(); i++) {
             AccessibilityNodeInfo child = node.getChild(i);
             if (child == null) continue;
             AccessibilityNodeInfo result = inboxRecycler(child, listBounds);
             if (result != null) return result;
         }
+        CharSequence cls = node.getClassName();
+        Rect bounds = new Rect(); node.getBoundsInScreen(bounds);
+        if (node.isVisibleToUser() && cls != null && cls.toString().endsWith("RecyclerView")
+                && bounds.top >= listBounds.top && bounds.bottom <= listBounds.bottom + 2
+                && bounds.width() >= listBounds.width() * 0.8 && bounds.height() >= listBounds.height() * 0.5)
+            return node;
         return null;
+    }
+    private static AccessibilityNodeInfo inbox(AccessibilityNodeInfo root) {
+        if (root == null) return null;
+        AccessibilityNodeInfo unread = textNode(root, "titleView", "Unread");
+        AccessibilityNodeInfo tabs = find(root, "tabbar");
+        if (unread == null || tabs == null) return null;
+        AccessibilityNodeInfo named = find(root, "conversationListContainer");
+        if (named != null) return named;
+        Rect anchor = new Rect(); unread.getBoundsInScreen(anchor);
+        Rect bottom = new Rect(); tabs.getBoundsInScreen(bottom);
+        Rect screen = new Rect(); root.getBoundsInScreen(screen);
+        Rect region = new Rect(screen.left, anchor.bottom, screen.right, bottom.top);
+        return inboxRecycler(root, region);
     }
     private static AccessibilityNodeInfo find(AccessibilityNodeInfo root, String id) {
         if (root == null) return null;

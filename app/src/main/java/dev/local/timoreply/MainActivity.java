@@ -70,7 +70,7 @@ public final class MainActivity extends Activity {
         });
         Button unreadStop = button(content, "Stop unread replies");
         unreadStop.setOnClickListener(v -> { UnreadService.stop(); update(); });
-        text(content, "Keep Timo visible and the phone unlocked during the unread pass. Groups and assistant accounts are skipped. When finished, Timo moves to the background and notification auto-replies turn on.", 14);
+        text(content, "Keep Timo visible and the phone unlocked. Only unread direct chats showing ‘Reply to messages to earn diamonds’ get a reply. When finished, Timo moves to the background and notification auto-replies turn on.", 14);
         unreadStatus = text(content, "Ready when you are.", 15);
         text(content, "New message notifications", 20);
         Button access = button(content, "Enable notification access");

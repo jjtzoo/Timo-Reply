@@ -33,7 +33,7 @@ adb install -r .\timo-reply-debug.apk
 
 3. Open **Timo Reply**, tap **Enable notification access**, and enable it in Android settings. For a sideloaded app, Android may require **Allow restricted settings** in the app's system information menu first.
 4. For unread inbox replies, tap **Enable unread access**, then enable **Timo Reply — unread chats** in Android Accessibility settings. Enabling this service alone does not send anything.
-5. Save your reply and tap **Reply unread chats, then auto-reply**. The app opens Timo, selects **Unread**, replies to eligible direct chats, and scrolls through the inbox. Keep Timo visible and the phone unlocked. Use **Stop unread replies** in Timo Reply to cancel. Leaving Timo pauses actions; after 20 seconds without the expected screen the pass stops.
+5. Save your reply and tap **Reply unread chats, then auto-reply**. The app opens Timo, selects **Unread**, and replies only to direct chats showing **Reply to messages to earn diamonds**. VIP and other tags are kept separate from the recipient name. Floating promotions are ignored. Keep Timo visible and the phone unlocked. Use **Stop unread replies** in Timo Reply to cancel. Leaving Timo pauses actions; after 20 seconds without the expected screen the pass stops.
 6. Once the eligible unread pass finishes, the app turns on notification auto-replies and sends Timo to the background. A usable notification Reply action is still required; support and recipient delivery remain unverified until a fresh message is observed.
 7. To test the notification path separately, keep auto-send OFF, put Timo in the background and receive a new test message from a cooperating contact.
 8. Check **Latest diagnostic** for **Reply action: YES** or **NO**. ADB diagnostics are also available:
@@ -50,9 +50,9 @@ adb install -r .\timo-reply-debug.apk
 
 - Filters only `com.hwsj.club`, the package in Timo Club's Play listing; confirm on the device.
 - Unread mode uses an Android Accessibility service to read the visible Timo inbox and perform native click/set-text/scroll actions. It runs on the phone, with no PC or ADB needed after installation. Notifications use reply actions, including wearable actions.
-- Unread mode is a user-started pass through all accessible unread direct chats. It skips groups/assistant/mentor inboxes, stops on existing drafts or changed recipients, and skips replies already visible in the chat. The configured Unicode/emoji reply is entered using Android's set-text action.
-- Unread chat names are hashed and reserved before opening for 24 hours to prevent retries after interruption. Two people with the same display name may be conservatively treated as one chat. Opening a chat marks it read in Timo, even if a later send fails; check the last chat after an interrupted pass. No automatic retry or restart after accessibility reconnect.
-- An outgoing bubble increments the unread counter; it does not prove recipient delivery. The unread workflow depends on the UI observed in Timo 2.9.9 and stops if required controls change. It is awaiting its first app-driven device test.
+- Unread mode is a user-started pass through accessible unread direct chats with the exact diamond-reply prompt. It skips groups/assistant/mentor inboxes and rows without that prompt, stops on existing drafts or changed recipients, and skips replies already visible in the chat. The configured Unicode/emoji reply is entered using Android's set-text action. Timo's observed `😊` to `[blush]` conversion is recognized without accepting other text changes.
+- Unread chat names are hashed and reserved before opening for 24 hours to prevent retries after interruption. Two people with the same display name may be conservatively treated as one chat. Opening a chat marks it read in Timo, even if a later send fails; check the last chat after an interrupted pass. A new explicit start can finish the bot's matching, pre-send draft in the currently open chat. Once Send may have been tapped, it is never retried automatically. No automatic unread restart after accessibility reconnect.
+- An outgoing bubble increments the unread counter; it does not prove recipient delivery. The unread workflow depends on the UI observed in Timo 2.9.9 and stops if required controls change. It recognizes anonymous nested inbox RecyclerViews and avoids the surrounding category ViewPager when scrolling. Scrolling past the first page is implemented but remains untested on the phone.
 - Skips existing notifications at listener connection, old messages, duplicates, summary/ongoing notifications, identifiable groups, and identifiable outgoing messages.
 - At most one reply per conversation per 10 minutes, with a 30-second global gap.
 - Starts in preview on first install. After explicit opt-in, a normal listener reconnect resumes auto-send after a fresh baseline and warmup; existing unread notifications are never sent replies during recovery.
@@ -68,10 +68,10 @@ adb install -r .\timo-reply-debug.apk
 
 ## Verification
 
-Fourteen unit tests cover notification freshness, preview, deduplication, cooldowns, group/outgoing filtering, and unread eligibility, reserved chats, changed recipients/drafts and disabled Send controls.
+Sixteen unit tests cover notification freshness, preview, deduplication, cooldowns, group/outgoing filtering, unread eligibility, the diamond-prompt requirement, reserved chats, changed recipients/drafts, disabled Send controls and Timo's observed emoji conversion.
 See `tools/Test-Policy.ps1` to run them with a Java JDK without an Android SDK.
 The Gradle debug build, all ten unit tests, and Android lint passed (lint still reports non-blocking warnings). The APK passed signature verification (v2/v3).
-One manual ADB test produced an outgoing reply bubble in Timo. This does not validate the app's unread automation or recipient delivery. App-driven unread replies, notification replies, and all-day/reboot recovery still require phone tests.
+On 2 October 2026, the app itself displayed four outgoing replies to matching unread chats on the Infinix X6873, ignored non-matching rows, completed the pass, enabled notification mode and returned to the launcher. The operator only installed/started the app and inspected diagnostics; the Accessibility service opened chats, entered text and tapped Send. It also finished its own pre-send draft from an earlier stopped test. Recipient delivery/read status, notification reply support, scrolling beyond the first page, all-day operation and reboot recovery remain unverified. A separate earlier manual ADB reply is not included in the four bot replies.
 
 ## Platform references
 

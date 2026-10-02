@@ -28,5 +28,5 @@ if ($Watch) {
     & $taskAdb.Source @taskArgs logcat -T 1 -v time 'TimoReply:I' 'TimoUnread:I' '*:S'
 } else {
     Write-Output 'Recent bot diagnostics:'
-    & $taskAdb.Source @taskArgs logcat -d -t 1000 -v time 'TimoReply:I' 'TimoUnread:I' '*:S'
+    & $taskAdb.Source @taskArgs logcat -d -v time 'TimoReply:I' 'TimoUnread:I' '*:S'
 }
