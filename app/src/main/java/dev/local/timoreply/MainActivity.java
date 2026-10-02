@@ -22,6 +22,7 @@ public final class MainActivity extends Activity {
     private TextView status;
     private Switch enabled;
     private EditText replyText;
+    private TextView unreadStatus;
     private boolean refreshing;
     private final Handler handler = new Handler();
     private final Runnable refresh = new Runnable() {
@@ -44,9 +45,7 @@ public final class MainActivity extends Activity {
             return insets;
         });
         text(content, "Timo Reply", 30);
-        text(content, "Start in preview. Check reply support before enabling auto-send.", 16);
-        Button access = button(content, "Enable notification access");
-        access.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
+        text(content, "Reply to unread chats first, then handle new notifications.", 16);
         text(content, "Reply message", 18);
         replyText = new EditText(this);
         replyText.setInputType(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_FLAG_MULTI_LINE | InputType.TYPE_TEXT_FLAG_CAP_SENTENCES);
@@ -58,15 +57,32 @@ public final class MainActivity extends Activity {
         save.setOnClickListener(v -> {
             if (saveReply()) Toast.makeText(this, "Reply saved", Toast.LENGTH_SHORT).show();
         });
+        text(content, "Unread chats", 20);
+        Button unreadAccess = button(content, "Enable unread access");
+        unreadAccess.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)));
+        Button unreadStart = button(content, "Reply unread chats, then auto-reply");
+        unreadStart.setOnClickListener(v -> {
+            if (!saveReply()) return;
+            if (!UnreadService.available()) {
+                Toast.makeText(this, "Enable unread access first.", Toast.LENGTH_LONG).show(); return;
+            }
+            if (!UnreadService.start(this)) Toast.makeText(this, "Already running, or Timo could not open.", Toast.LENGTH_LONG).show();
+        });
+        Button unreadStop = button(content, "Stop unread replies");
+        unreadStop.setOnClickListener(v -> { UnreadService.stop(); update(); });
+        text(content, "Keep Timo visible and the phone unlocked during the unread pass. Groups and assistant accounts are skipped. When finished, Timo moves to the background and notification auto-replies turn on.", 14);
+        unreadStatus = text(content, "Ready when you are.", 15);
+        text(content, "New message notifications", 20);
+        Button access = button(content, "Enable notification access");
+        access.setOnClickListener(v -> startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)));
         enabled = new Switch(this);
         enabled.setText("Auto-send replies");
         content.addView(enabled);
         enabled.setOnCheckedChangeListener((view, checked) -> {
             if (refreshing) return;
             SharedPreferences p = Store.prefs(this);
-            if (checked && (!Store.hasAccess(this) || !p.getBoolean("connected", false)
-                    || !p.getBoolean("reply_supported", false))) {
-                Toast.makeText(this, "First detect a Timo notification with a reply action.", Toast.LENGTH_LONG).show();
+            if (checked && (!Store.hasAccess(this) || !p.getBoolean("connected", false) || UnreadService.running())) {
+                Toast.makeText(this, "Connect notification access and finish the unread pass first.", Toast.LENGTH_LONG).show();
                 update(); return;
             }
             if (checked && !saveReply()) { update(); return; }
@@ -76,7 +92,7 @@ public final class MainActivity extends Activity {
             update();
         });
         text(content, "At most one reply per conversation every 10 minutes. Group conversations are skipped when identified. No messages are sent during preview.", 14);
-        text(content, "Once enabled, replies resume after Android reconnects. Existing unread messages stay skipped.", 14);
+        text(content, "Notification replies resume after Android reconnects. Old notifications are skipped; use the unread pass for the inbox.", 14);
         text(content, "Latest diagnostic", 18);
         status = text(content, "Waiting for a Timo notification.", 15);
         status.setTextIsSelectable(true);
@@ -105,6 +121,8 @@ public final class MainActivity extends Activity {
                 + "Listener: " + (p.getBoolean("connected", false) ? "Connected" : "Disconnected") + "\n"
                 + (at > 0 ? DateFormat.getTimeInstance().format(new Date(at)) + "\n" : "")
                 + p.getString("status", "Waiting for a Timo notification."));
+        unreadStatus.setText("Unread access: " + (UnreadService.available() ? "ON" : "OFF") + "\n"
+                + p.getString("unread_status", "Ready when you are."));
     }
 
     @Override protected void onResume() { super.onResume(); handler.post(refresh); }

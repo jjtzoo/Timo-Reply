@@ -25,8 +25,8 @@ $taskListeners = & $taskAdb.Source @taskArgs shell settings get secure enabled_n
 Write-Output ('Timo Reply notification access: ' + [bool](($taskListeners -join '') -match 'dev\.local\.timoreply/'))
 if ($Watch) {
     Write-Output 'Watching bot diagnostics. Receive a NEW Timo message. Press Ctrl+C to stop.'
-    & $taskAdb.Source @taskArgs logcat -T 1 -v time 'TimoReply:I' '*:S'
+    & $taskAdb.Source @taskArgs logcat -T 1 -v time 'TimoReply:I' 'TimoUnread:I' '*:S'
 } else {
     Write-Output 'Recent bot diagnostics:'
-    & $taskAdb.Source @taskArgs logcat -d -t 1000 -v time 'TimoReply:I' '*:S'
+    & $taskAdb.Source @taskArgs logcat -d -t 1000 -v time 'TimoReply:I' 'TimoUnread:I' '*:S'
 }

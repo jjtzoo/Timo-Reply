@@ -23,7 +23,9 @@ if (-not $taskJavac -or -not $taskJava) { throw 'Install a Java JDK and put java
 $taskClasspath = (Join-Path $DependencyDirectory 'junit-4.13.2.jar') + [IO.Path]::PathSeparator + (Join-Path $DependencyDirectory 'hamcrest-core-1.3.jar')
 $taskPolicy = Join-Path $taskProject 'app\src\main\java\dev\local\timoreply\ReplyPolicy.java'
 $taskTest = Join-Path $taskProject 'app\src\test\java\dev\local\timoreply\ReplyPolicyTest.java'
-& $taskJavac.Source --release 17 -cp $taskClasspath -d $taskClasses $taskPolicy $taskTest
+$taskUnreadPolicy = Join-Path $taskProject 'app\src\main\java\dev\local\timoreply\UnreadPolicy.java'
+$taskUnreadTest = Join-Path $taskProject 'app\src\test\java\dev\local\timoreply\UnreadPolicyTest.java'
+& $taskJavac.Source --release 17 -cp $taskClasspath -d $taskClasses $taskPolicy $taskTest $taskUnreadPolicy $taskUnreadTest
 if ($LASTEXITCODE -ne 0) { throw 'Policy tests did not compile.' }
-& $taskJava.Source -cp ($taskClasses + [IO.Path]::PathSeparator + $taskClasspath) org.junit.runner.JUnitCore dev.local.timoreply.ReplyPolicyTest
+& $taskJava.Source -cp ($taskClasses + [IO.Path]::PathSeparator + $taskClasspath) org.junit.runner.JUnitCore dev.local.timoreply.ReplyPolicyTest dev.local.timoreply.UnreadPolicyTest
 if ($LASTEXITCODE -ne 0) { throw 'Policy tests failed.' }
