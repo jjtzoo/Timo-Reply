@@ -19,10 +19,11 @@ import java.util.Set;
 public final class UnreadService extends AccessibilityService {
     private static UnreadService instance;
     private static final String PREFIX = Store.TARGET + ":id/";
-    private enum Stage { INBOX, SELECT_UNREAD, SCAN, OPEN, COMPOSE, SEND, VERIFY, RETURN }
+    private enum Stage { INBOX, SELECT_CATEGORY, SCAN, OPEN, COMPOSE, SEND, VERIFY, RETURN }
     private final Handler handler = new Handler(Looper.getMainLooper());
     private final Set<String> pages = new HashSet<>();
     private final Set<String> visited = new HashSet<>();
+    private final Set<String> discovered = new HashSet<>();
     private Stage stage;
     private long stageAt;
     private long diagnosticAt;
@@ -31,15 +32,26 @@ public final class UnreadService extends AccessibilityService {
     private int emptyChecks;
     private String expectedName;
     private String reply;
+    private boolean discovery;
+    private boolean checkingAll;
+    private int scanned;
+    private int matching;
+    private int tribes;
     private final Runnable step = this::tick;
 
     static boolean available() { return instance != null; }
     static boolean running() { return instance != null && instance.stage != null; }
     static boolean start(Context context) {
+        return launch(context, false);
+    }
+    static boolean discover(Context context) {
+        return launch(context, true);
+    }
+    private static boolean launch(Context context, boolean discovery) {
         if (instance == null || running()) return false;
         Intent launch = context.getPackageManager().getLaunchIntentForPackage(Store.TARGET);
         if (launch == null) return false;
-        instance.begin();
+        instance.begin(discovery);
         launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         try { context.startActivity(launch); }
         catch (RuntimeException e) { instance.finish("Could not open Timo."); return false; }
@@ -51,8 +63,11 @@ public final class UnreadService extends AccessibilityService {
 
     @Override protected void onServiceConnected() {
         instance = this;
+        sent = Store.prefs(this).getInt("unread_sent", 0);
+        boolean interrupted = Store.prefs(this).getBoolean("unread_running", false);
         Store.prefs(this).edit().putBoolean("unread_running", false).apply();
-        status("Unread access ready. Tap Reply unread chats to start.");
+        if (interrupted) status("Previous inbox session interrupted. Start again when ready; no automatic retry.");
+        else if (!Store.prefs(this).contains("unread_status")) status("Unread access ready. Tap Reply unread chats to start.");
     }
     @Override public void onAccessibilityEvent(AccessibilityEvent event) { /* Poll fresh nodes between actions. */ }
     @Override public void onInterrupt() { finish("Accessibility interrupted. No automatic retry."); }
@@ -63,19 +78,28 @@ public final class UnreadService extends AccessibilityService {
         super.onDestroy();
     }
 
-    private void begin() {
+    private void begin(boolean discovery) {
         handler.removeCallbacks(step);
-        pages.clear(); visited.clear(); sent = 0; skipped = 0; emptyChecks = 0;
+        this.discovery = discovery;
+        checkingAll = false;
+        pages.clear(); visited.clear(); discovered.clear(); scanned = 0; matching = 0; tribes = 0;
+        sent = 0; skipped = 0; emptyChecks = 0;
         reply = Store.prefs(this).getString("reply", Store.DEFAULT_REPLY).trim();
         // Do not let notification replies run alongside the foreground inbox pass.
-        Store.prefs(this).edit().putBoolean("enabled", false).putLong("armed_at", 0)
-                .putBoolean("unread_running", true).putInt("unread_sent", 0).apply();
+        if (!discovery) Store.prefs(this).edit().putBoolean("enabled", false).putLong("armed_at", 0).putInt("unread_sent", 0).apply();
+        Store.prefs(this).edit().putBoolean("unread_running", true).apply();
         setStage(Stage.INBOX);
         status("Opening Timo. Keep the phone unlocked and Timo visible.");
         handler.postDelayed(step, 1200);
     }
     private void setStage(Stage next) { stage = next; stageAt = SystemClock.elapsedRealtime(); }
     private void status(String message) {
+        if (discovery) {
+            String value = "All: " + scanned + " chat rows, " + matching + " matching unread chats, " + tribes + " tribe rows ignored. " + message;
+            Store.prefs(this).edit().putString("all_scan_status", value)
+                    .putInt("all_scan_rows", scanned).putInt("all_scan_matching", matching).putInt("all_scan_tribes", tribes).apply();
+            Log.i("TimoUnread", value); return;
+        }
         String value = "Replies shown in Timo: " + sent + ". " + message;
         Store.prefs(this).edit().putString("unread_status", value).putInt("unread_sent", sent).apply();
         Log.i("TimoUnread", value);
@@ -87,6 +111,16 @@ public final class UnreadService extends AccessibilityService {
         status(message);
     }
     private void complete() {
+        if (discovery) {
+            finish("Scan finished. No chats opened and no replies sent.");
+            performGlobalAction(GLOBAL_ACTION_HOME); return;
+        }
+        if (!checkingAll) {
+            checkingAll = true;
+            pages.clear(); emptyChecks = 0;
+            setStage(Stage.SELECT_CATEGORY);
+            status("Unread pass clear. Cross-checking All for unread diamond-reward chats."); return;
+        }
         finish("Diamond-reward unread pass finished. Switching to notification auto-replies.");
         if (!Store.hasAccess(this)) {
             status("Unread pass finished. Enable notification access to handle new messages."); return;
@@ -118,7 +152,7 @@ public final class UnreadService extends AccessibilityService {
         switch (stage) {
             case INBOX: {
                 if (inbox(root) != null && textNode(root, "titleView", "Unread") != null) {
-                    setStage(Stage.SELECT_UNREAD); return;
+                    setStage(Stage.SELECT_CATEGORY); return;
                 }
                 AccessibilityNodeInfo back = find(root, "ivBack");
                 if (back != null) {
@@ -131,7 +165,7 @@ public final class UnreadService extends AccessibilityService {
                     boolean legacyPreSend = reservedAt > 0 && System.currentTimeMillis() - reservedAt < 15 * 60 * 1000L
                             && Store.map(this, "threads").optLong(key) < reservedAt;
                     boolean dispatched = Store.prefs(this).getBoolean("unread_pending_dispatched", false);
-                    if (directChat(root) && !name.isEmpty() && (knownPending || legacyPreSend) && !dispatched
+                    if (!discovery && directChat(root) && !name.isEmpty() && (knownPending || legacyPreSend) && !dispatched
                             && UnreadPolicy.sameText(reply, text(find(root, "editContent")))) {
                         expectedName = name; visited.add(key); setStage(Stage.SEND);
                         status("Continuing the bot's previously entered reply."); return;
@@ -142,9 +176,9 @@ public final class UnreadService extends AccessibilityService {
                 if (messages != null) click(messages);
                 return;
             }
-            case SELECT_UNREAD: {
-                AccessibilityNodeInfo unread = textNode(root, "titleView", "Unread");
-                if (unread != null && click(unread)) setStage(Stage.SCAN);
+            case SELECT_CATEGORY: {
+                AccessibilityNodeInfo category = textNode(root, "titleView", discovery || checkingAll ? "All" : "Unread");
+                if (category != null && click(category)) setStage(Stage.SCAN);
                 return;
             }
             case SCAN: scan(root); return;
@@ -206,7 +240,8 @@ public final class UnreadService extends AccessibilityService {
             case RETURN: {
                 if (inbox(root) != null) {
                     // Selecting Unread can restore the first page; each pass must scan to the bottom again.
-                    pages.clear(); emptyChecks = 0; setStage(Stage.SELECT_UNREAD); return;
+                    checkingAll = false;
+                    pages.clear(); emptyChecks = 0; setStage(Stage.SELECT_CATEGORY); return;
                 }
                 if (!recipientMatches(root)) { finish("Stopped: a different chat is open."); return; }
                 AccessibilityNodeInfo back = find(root, "ivBack");
@@ -221,21 +256,31 @@ public final class UnreadService extends AccessibilityService {
         if (list == null) { finish("Stopped: Unread inbox is no longer visible."); return; }
         Rect listBounds = new Rect(); list.getBoundsInScreen(listBounds);
         StringBuilder page = new StringBuilder();
-        List<AccessibilityNodeInfo> rows = root.findAccessibilityNodeInfosByViewId(PREFIX + "bodyView");
+        List<AccessibilityNodeInfo> rows = new java.util.ArrayList<>(list.findAccessibilityNodeInfosByViewId(PREFIX + "bodyView"));
+        rows.addAll(list.findAccessibilityNodeInfosByViewId(PREFIX + "myFamilyView"));
         for (AccessibilityNodeInfo row : rows) {
             AccessibilityNodeInfo title = find(row, "title");
+            if (title == null) title = find(row, "tvFamilyName");
             AccessibilityNodeInfo badge = find(row, "tvBadge");
-            if (title == null || badge == null || !row.isClickable() || !row.isVisibleToUser()) continue;
+            if (title == null || !row.isClickable() || !row.isVisibleToUser()) continue;
+            Rect bounds = new Rect(); row.getBoundsInScreen(bounds);
+            if (!listBounds.contains(bounds) || bounds.height() < 120) continue;
             String name = text(title);
             String key = Store.hash(name);
             page.append(key).append(':').append(text(badge)).append(';');
-            boolean special = find(row, "myFamilyView") != null || containsText(row, "Tribe");
+            boolean tribe = UnreadPolicy.isTribeConversation(name, text(find(row, "mTvTag")),
+                    (PREFIX + "myFamilyView").equals(row.getViewIdResourceName()) || find(row, "myFamilyView") != null || containsText(row, "Tribe"));
+            if (tribe) Store.remember(this, "tribe_threads", key, System.currentTimeMillis());
+            boolean special = tribe;
             long reservedAt = Store.map(this, "unread_reserved").optLong(key);
             boolean reserved = visited.contains(key) || (reservedAt > 0 && System.currentTimeMillis() - reservedAt < 24 * 60 * 60 * 1000L);
             // VIP and other tags have separate nodes; only title is the recipient name.
-            if (!UnreadPolicy.eligible(name, text(badge), text(find(row, "desc")), special, reserved)) continue;
-            Rect bounds = new Rect(); row.getBoundsInScreen(bounds);
-            if (!listBounds.contains(bounds) || bounds.height() < 120) continue;
+            boolean eligible = UnreadPolicy.eligible(name, text(badge), text(find(row, "desc")), special, discovery ? false : reserved);
+            if (discovery) {
+                if (discovered.add(key)) { scanned++; if (tribe) tribes++; if (eligible) matching++; }
+                continue;
+            }
+            if (!eligible) continue;
             // Opening consumes the unread flag. Persist before opening; interrupted chats never retry silently.
             Store.remember(this, "unread_reserved", key, System.currentTimeMillis());
             visited.add(key);
@@ -252,6 +297,7 @@ public final class UnreadService extends AccessibilityService {
             complete(); return;
         }
         emptyChecks = 0;
+        if (discovery) status("Scanning All without opening chats.");
         if (!pages.add(signature)) {
             complete(); return;
         }
@@ -266,7 +312,12 @@ public final class UnreadService extends AccessibilityService {
         stageAt = SystemClock.elapsedRealtime();
     }
     private boolean recipientMatches(AccessibilityNodeInfo root) { return expectedName != null && expectedName.equals(text(find(root, "tvTitle"))); }
-    private boolean directChat(AccessibilityNodeInfo root) { return find(root, "ivLoverTree") != null && find(root, "editContent") != null; }
+    private boolean directChat(AccessibilityNodeInfo root) {
+        String name = text(find(root, "tvTitle"));
+        return find(root, "ivLoverTree") != null && find(root, "editContent") != null
+                && !UnreadPolicy.isTribeConversation(name, "", false)
+                && !Store.map(this, "tribe_threads").has(Store.hash(name));
+    }
     private static boolean emptyDraft(AccessibilityNodeInfo edit) {
         String value = text(edit);
         CharSequence hint = edit.getHintText();

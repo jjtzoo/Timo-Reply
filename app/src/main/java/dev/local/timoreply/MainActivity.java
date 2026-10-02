@@ -23,6 +23,7 @@ public final class MainActivity extends Activity {
     private Switch enabled;
     private EditText replyText;
     private TextView unreadStatus;
+    private TextView allStatus;
     private boolean refreshing;
     private final Handler handler = new Handler();
     private final Runnable refresh = new Runnable() {
@@ -68,9 +69,17 @@ public final class MainActivity extends Activity {
             }
             if (!UnreadService.start(this)) Toast.makeText(this, "Already running, or Timo could not open.", Toast.LENGTH_LONG).show();
         });
-        Button unreadStop = button(content, "Stop unread replies");
+        Button unreadStop = button(content, "Stop inbox scan / replies");
         unreadStop.setOnClickListener(v -> { UnreadService.stop(); update(); });
-        text(content, "Keep Timo visible and the phone unlocked. Only unread direct chats showing ‘Reply to messages to earn diamonds’ get a reply. When finished, Timo moves to the background and notification auto-replies turn on.", 14);
+        Button allScan = button(content, "Scan All chats (no replies)");
+        allScan.setOnClickListener(v -> {
+            if (!UnreadService.available()) {
+                Toast.makeText(this, "Enable unread access first.", Toast.LENGTH_LONG).show(); return;
+            }
+            if (!UnreadService.discover(this)) Toast.makeText(this, "Already running, or Timo could not open.", Toast.LENGTH_LONG).show();
+        });
+        allStatus = text(content, "All chats have not been scanned yet.", 15);
+        text(content, "Keep Timo visible and the phone unlocked. The bot clears eligible chats in Unread, then checks All for missed unread chats. Only the diamond-reply prompt qualifies; tribes are ignored. When finished, Timo moves to the background and notification auto-replies turn on.", 14);
         unreadStatus = text(content, "Ready when you are.", 15);
         text(content, "New message notifications", 20);
         Button access = button(content, "Enable notification access");
@@ -123,6 +132,7 @@ public final class MainActivity extends Activity {
                 + p.getString("status", "Waiting for a Timo notification."));
         unreadStatus.setText("Unread access: " + (UnreadService.available() ? "ON" : "OFF") + "\n"
                 + p.getString("unread_status", "Ready when you are."));
+        allStatus.setText(p.getString("all_scan_status", "All chats have not been scanned yet."));
     }
 
     @Override protected void onResume() { super.onResume(); handler.post(refresh); }

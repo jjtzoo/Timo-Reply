@@ -4,6 +4,11 @@ import java.util.Locale;
 
 /** Checks shared by inbox inspection and every stage before sending. */
 public final class UnreadPolicy {
+    public static boolean isTribeConversation(String name, String tag, boolean familyRow) {
+        if (familyRow) return true;
+        String labels = ((name == null ? "" : name) + " " + (tag == null ? "" : tag)).toLowerCase(Locale.ROOT);
+        return labels.matches("(?s).*\\b(tribe|family)\\b.*");
+    }
     public static boolean eligible(String name, String badge, String invitation, boolean specialRow, boolean reserved) {
         if (name == null || name.trim().isEmpty() || specialRow || reserved) return false;
         if (badge == null || !badge.matches("[1-9][0-9]*\\+?")) return false;

@@ -39,4 +39,12 @@ public final class UnreadPolicyTest {
         assertFalse(UnreadPolicy.canSend("Mark", "Mark", reply, "Hey you [heart] nice to hear from you.", true, true));
         assertFalse(UnreadPolicy.canSend("Mark", "Mark", reply, "Hey you [blush] nice to hear from you. Send money", true, true));
     }
+    @Test public void tribeLabelsAndFamilyRowsAreRecognizedWithoutGroupMetadata() {
+        assertTrue(UnreadPolicy.isTribeConversation("Fiori tribe", "", false));
+        assertTrue(UnreadPolicy.isTribeConversation("Fiori", "Tribe", false));
+        assertTrue(UnreadPolicy.isTribeConversation("Fiori", "", true));
+        assertTrue(UnreadPolicy.isTribeConversation("Family\nAnnouncements", "", false));
+        assertFalse(UnreadPolicy.isTribeConversation("Mark", "VIP", false));
+        assertFalse(UnreadPolicy.isTribeConversation("Tribeca", "", false));
+    }
 }

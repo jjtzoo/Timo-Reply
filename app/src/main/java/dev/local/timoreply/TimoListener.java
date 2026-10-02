@@ -94,7 +94,10 @@ public final class TimoListener extends NotificationListenerService {
         String body = string(n.extras.getCharSequence(Notification.EXTRA_TEXT));
         String conversation = string(n.extras.getCharSequence(Notification.EXTRA_CONVERSATION_TITLE));
         long messageAt = n.when;
-        boolean group = n.extras.getBoolean("android.isGroupConversation", false);
+        boolean group = n.extras.getBoolean("android.isGroupConversation", false)
+                || UnreadPolicy.isTribeConversation(title, conversation, false)
+                || Store.map(this, "tribe_threads").has(Store.hash(title))
+                || (!conversation.isEmpty() && Store.map(this, "tribe_threads").has(Store.hash(conversation)));
         boolean outgoing = false;
         android.os.Parcelable[] messageBundles = n.extras.getParcelableArray(Notification.EXTRA_MESSAGES);
         if (messageBundles != null) {
