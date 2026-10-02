@@ -22,7 +22,7 @@ $taskManifest.manifest.application.SetAttribute('debuggable','http://schemas.and
 $taskManifest.Save((Join-Path $taskBuild 'AndroidManifest.xml'))
 & (Join-Path $BuildToolsDirectory 'aapt2.exe') compile --dir (Join-Path $taskProject 'app\src\main\res') -o (Join-Path $taskBuild 'resources.zip')
 Assert-NativeExit 'Resource compilation'
-& (Join-Path $BuildToolsDirectory 'aapt2.exe') link -o (Join-Path $taskBuild 'unsigned.apk') --manifest (Join-Path $taskBuild 'AndroidManifest.xml') -I $taskJar (Join-Path $taskBuild 'resources.zip') --min-sdk-version 26 --target-sdk-version 36 --version-code 1 --version-name 0.1
+& (Join-Path $BuildToolsDirectory 'aapt2.exe') link -o (Join-Path $taskBuild 'unsigned.apk') --manifest (Join-Path $taskBuild 'AndroidManifest.xml') -I $taskJar (Join-Path $taskBuild 'resources.zip') --min-sdk-version 26 --target-sdk-version 36 --version-code 2 --version-name 0.2
 Assert-NativeExit 'Resource linking'
 & (Join-Path $JavaBinDirectory 'jar.exe') --create --file (Join-Path $taskBuild 'classes.jar') -C (Join-Path $taskBuild 'classes') .
 Assert-NativeExit 'Class archive'

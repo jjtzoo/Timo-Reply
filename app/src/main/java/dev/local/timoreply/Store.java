@@ -10,7 +10,7 @@ import java.util.Iterator;
 
 final class Store {
     static final String TARGET = "com.hwsj.club";
-    static final String DEFAULT_REPLY = "Thanks for your message! I'm away right now and will reply when I'm back.";
+    static final String DEFAULT_REPLY = "Hey you \uD83D\uDE09 how's your day going?";
     static SharedPreferences prefs(Context c) { return c.getSharedPreferences("timo_reply", Context.MODE_PRIVATE); }
     static void status(Context c, String value) {
         prefs(c).edit().putString("status", value).putLong("status_at", System.currentTimeMillis()).apply();

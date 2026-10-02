@@ -1,9 +1,9 @@
 # Timo Reply starter
 
-Android app for one configurable generic reply to Timo Club messages.
+Android app for one configurable, casual and lightly flirty reply to Timo Club messages.
 Starts in preview; auto-send is OFF. Default message:
 
-> Thanks for your message! I'm away right now and will reply when I'm back.
+> Hey you 😉 how's your day going?
 
 ## Build
 
