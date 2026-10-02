@@ -78,6 +78,8 @@ On 2 October 2026, the app itself displayed four outgoing replies to matching un
 
 On 3 October 2026, version 0.5's read-only All scan checked 13 chat rows across multiple pages, ignored one tribe row and found one matching unread chat. The bot then produced an outgoing reply for that chat through Unread. A subsequent pass checked Unread and All automatically, sent zero duplicate replies and returned to the launcher with notification mode enabled. Notification Reply support and recipient delivery are still unverified; enabling notification mode alone does not prove replies work. No Timo notification had been observed during these checks.
 
+After the user's reboot on 3 October, an ADB check found the bot process already running, its notification listener bound to Android, notification access retained, auto-send enabled and a new “Auto-send resumed” diagnostic. The check did not launch either app; the launcher was foreground. This demonstrates notification-service reconnect after this reboot, but not actual notification reply delivery. Accessibility services were disabled at the time of the check (`enabled_accessibility_services=null`, no enabled/bound services), so the unread service needs its access re-enabled before another inbox pass. The cause of that permission state is not established. The saved reply, cooldowns and reservations remained present. Full-day, USB-disconnected and repeated reboot tests are still outstanding.
+
 ## Platform references
 
 - [Timo Club Play listing](https://play.google.com/store/apps/details?id=com.hwsj.club)
